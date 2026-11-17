@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     solana_rpc_url: str = "https://api.devnet.solana.com"
     redis_url: str = "redis://localhost:6379/0"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/payment_platform"
-
+    payment_admin_key: str
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

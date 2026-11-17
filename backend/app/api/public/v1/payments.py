@@ -1,16 +1,30 @@
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.schemas.payment import PaymentCreate, PaymentResponse
-from app.services.payment_service import create_payment
+from app.models.payment import Payment
 
-router = APIRouter(prefix="/payments", tags=["Payments"])
+router = APIRouter(prefix="/payments", tags=["Public Payments"])
 
-@router.post("", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
-async def create_payment_endpoint(
-    payload: PaymentCreate,
+@router.get("/{payment_id}")
+async def get_public_payment(
+    payment_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    return await create_payment(payload, db)
+    payment = await db.get(Payment, payment_id)
+
+    if payment is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Payment not found",
+        )
+
+    return {
+        "id": payment.id,
+        "amount": str(payment.amount),
+        "currency": payment.currency,
+        "network": payment.network,
+        "status": payment.status,
+        "payment_url": payment.payment_url,
+    }

@@ -1,7 +1,7 @@
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.services.payment_verification_service import confirm_payment
 from app.core.merchant_auth import get_current_merchant
 from app.db.session import get_db
 from app.models.merchant import Merchant
@@ -21,3 +21,29 @@ async def create_payment_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     return await create_payment(payload, db, merchant.id)
+
+
+
+@router.post("/{payment_id}/verify")
+async def verify_payment_endpoint(
+    payment_id: str,
+    merchant: Merchant = Depends(get_current_merchant),
+    db: AsyncSession = Depends(get_db),
+):
+    payment = await confirm_payment(
+        payment_id=payment_id,
+        merchant_id=merchant.id,
+        db=db,
+    )
+
+    if payment is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Payment not found",
+        )
+
+    return {
+        "id": payment.id,
+        "status": payment.status,
+        "transaction_signature": payment.transaction_signature,
+    }

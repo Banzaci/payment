@@ -1,11 +1,9 @@
 
 import pytest
 from decimal import Decimal
+from urllib.parse import urlparse, parse_qs
 
 from httpx import ASGITransport, AsyncClient
-from urllib.parse import urlparse, parse_qs
-from app.libs.solana import is_valid_solana_address
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
@@ -15,8 +13,12 @@ from sqlalchemy.ext.asyncio import (
 from app.main import app
 from app.db.base import Base
 from app.db.session import get_db
+from app.models.merchant import Merchant
 from app.models.payment import Payment
+from app.core.api_key import generate_api_key, hash_api_key
 from app.core.config import get_settings
+from app.libs.solana import is_valid_solana_address
+
 
 @pytest.mark.asyncio
 async def test_create_payment():
@@ -38,6 +40,22 @@ async def test_create_payment():
     app.dependency_overrides[get_db] = override_get_db
 
     try:
+        api_key = generate_api_key()
+
+        async with session_factory() as session:
+            merchant = Merchant(
+                name="Test Hotel",
+                default_currency="USDC",
+                enabled_payment_methods=["usdc"],
+                api_key_hash=hash_api_key(api_key),
+            )
+
+            session.add(merchant)
+            await session.commit()
+            await session.refresh(merchant)
+
+            merchant_id = merchant.id
+
         payload = {
             "amount": "10.50",
             "currency": "USDC",
@@ -50,8 +68,9 @@ async def test_create_payment():
             base_url="http://test",
         ) as client:
             response = await client.post(
-                "/api/public/v1/payments",
+                "/api/private/v1/payments",
                 json=payload,
+                headers={"X-API-Key": api_key},
             )
 
         assert response.status_code == 201
@@ -80,6 +99,7 @@ async def test_create_payment():
             )
             saved = result.scalar_one()
 
+            assert saved.merchant_id == merchant_id
             assert saved.amount == Decimal("10.50")
             assert saved.recipient_address == payload["recipient_address"]
 
@@ -90,18 +110,54 @@ async def test_create_payment():
 
 @pytest.mark.asyncio
 async def test_create_payment_invalid_solana_address():
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-    ) as client:
-        response = await client.post(
-            "/api/public/v1/payments",
-            json={
-                "amount": "10.50",
-                "currency": "USDC",
-                "network": "solana-devnet",
-                "recipient_address": "invalid-address",
-            },
-        )
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
-    assert response.status_code == 422
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+    )
+
+    async def override_get_db():
+        async with session_factory() as session:
+            yield session
+
+    previous_overrides = app.dependency_overrides.copy()
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        api_key = generate_api_key()
+
+        async with session_factory() as session:
+            merchant = Merchant(
+                name="Test Hotel",
+                default_currency="USDC",
+                enabled_payment_methods=["usdc"],
+                api_key_hash=hash_api_key(api_key),
+            )
+
+            session.add(merchant)
+            await session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/private/v1/payments",
+                headers={"X-API-Key": api_key},
+                json={
+                    "amount": "10.50",
+                    "currency": "USDC",
+                    "network": "solana-devnet",
+                    "recipient_address": "invalid-address",
+                },
+            )
+
+        assert response.status_code == 422
+
+    finally:
+        app.dependency_overrides = previous_overrides
+        await engine.dispose()

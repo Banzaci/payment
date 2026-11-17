@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
-
+from sqlalchemy import UniqueConstraint
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,17 @@ class Payment(Base):
         String(36),
         primary_key=True,
         default=lambda: str(uuid4()),
+    )
+    __table_args__ = (
+        UniqueConstraint(
+            "transaction_signature",
+            name="uq_payments_transaction_signature",
+        ),
+    )
+
+    transaction_signature: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
     )
 
     merchant_id: Mapped[str] = mapped_column(
