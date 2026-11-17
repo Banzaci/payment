@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+pytest
+httpx
+pydantic-settings
+redis 
+slowapi
+pytest-asyncio
+asyncpg
+fakeredis[lua]
+sqlalchemy[asyncio]
+asyncpg
+aiosqlite
