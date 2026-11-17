@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 
 import pytest
@@ -9,13 +8,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import StaticPool
-
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.merchant import Merchant
 from app.models.payment import Payment
-
 
 @pytest_asyncio.fixture
 async def public_payment():
@@ -88,7 +85,7 @@ async def test_get_public_payment(public_payment):
     assert data["network"] == "solana-devnet"
     assert data["status"] == "pending"
     assert data["payment_url"] == "solana:test"
-
+    assert data["enabled_payment_methods"] == ["usdc"]
     assert "merchant_id" not in data
     assert "transaction_signature" not in data
     assert "reference" not in data
